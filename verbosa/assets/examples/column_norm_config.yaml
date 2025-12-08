@@ -1,0 +1,101 @@
+# This file is an example for column normalization configuration in YAML
+# format.
+
+
+# ---------------------------- Metadata section ---------------------------- #
+name: Example. Column normalization configuration
+description: |
+  The purpose of this file is to show the user how to build a column
+  normalization configuration file in YAML format.
+author: Leonardo Pérez Lázaro
+date: 06/12/2025
+
+
+# ----------------------- Main configuration section ----------------------- #
+# Notes.
+# 1) Not all dtypes are supported yet.
+# 2) Values at `checks` and `normalization` require knowledge of available
+# checks and normalization methods in verbosa.
+columns:
+  - name: fecha
+    description: Fecha de la transacción
+    dtype: datetime64[ns]
+    aliases:
+      - date
+      - transaction_date
+    nullable: False
+    allow_duplicates: True
+    fill_na:
+    checks:
+    normalization: date_dayfirst
+  
+  - name: concepto
+    description: Concepto de la transacción
+    dtype: string
+    aliases:
+      - definicion
+      - descripcion
+    nullable: False
+    allow_duplicates: True
+    fill_na:
+    checks:
+      max_length: 255
+    normalization: text_stressed
+  
+  - name: monto
+    description: Monto de la transacción
+    dtype: Float64
+    aliases:
+      - amount
+      - transaction_amount
+    nullable: False
+    allow_duplicates: True
+    fill_na:
+    checks:
+      min_value: 0.0
+    normalization: numeric_float
+  
+  - name: tipo
+    description: Tipo de la transacción (ingreso/egreso)
+    dtype: string
+    aliases:
+      - type
+      - transaction_type
+    nullable: False
+    allow_duplicates: True
+    fill_na:
+    checks:
+      contains_only:
+        - ingreso
+        - egreso
+    normalization: categorical_relaxed
+  
+  - name: saldo
+    description: Saldo después de la transacción
+    dtype: Float64
+    aliases:
+      - balance
+      - account_balance
+    nullable: False
+    allow_duplicates: True
+    fill_na:
+    checks:
+      min_value: 0.0
+    normalization: numeric_float
+  
+  - name: clasificacion
+    description: Clasificación de la transacción
+    dtype: string
+    aliases:
+      - classification
+      - transaction_classification
+    nullable: True
+    allow_duplicates: True
+    fill_na: SIN CLASIFICACION
+    checks:
+      # - contains_only:
+      #     - comida
+      #     - transporte
+      #     - ocio
+      #     - otros
+    normalization: categorical_relaxed
