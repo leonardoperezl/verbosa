@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Sequence, Optional, Literal
+from typing import Literal
 
 
 TDType = Literal[
@@ -10,12 +10,13 @@ TDType = Literal[
     "Int32",
 ]
 
-TDCheckCallable = Literal[
+TDReviewMethod = Literal[
     "min_value",
     "max_value",
     "min_length",
     "max_length",
     "contains_only",
+    "no_na"
 ]
 
 TDViewer = Literal[
@@ -24,11 +25,13 @@ TDViewer = Literal[
     "console"
 ]
 
-
 TDNormalizationMethod = Literal[
+    "date",
+    "text"
+    "numeric",
+    "categorical",
     "text_stressed",
     "text_relaxed"
 ]
-
 
 Pathlike = str | Path

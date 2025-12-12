@@ -5,25 +5,15 @@ import logging
 
 
 from verbosa.utils.global_typings import (
-    TDType, TDCheckCallable
+    TDType,
+    TDReviewMethod,
+    TDNormalizationMethod
 )
+from verbosa.utils.serialization_helpers import str_sequence_param
 
 
 logger = logging.getLogger(__name__)
 
-
-
-@dataclass
-class ColumnCheck:
-    """
-    Represents a single validation check for a column.
-    """
-    name: TDCheckCallable
-    parameters: Any = None
-    
-    def to_dict(self) -> dict[str, Any]:
-        """Convert back to YAML-compatible dict."""
-        return {self.name: self.parameters}
 
 
 @dataclass
@@ -35,39 +25,44 @@ class ColumnConfig:
     dtype: TDType
     description: Optional[str] = None
     # Other possible names for the column
-    aliases: Optional[Sequence[str]] = None
-    nullable: bool = True
-    allow_duplicates: bool = True
-    fill_na: Optional[Any] = None
-    checks: Optional[Sequence[ColumnCheck]] = None
-    normalization: Optional[str] = None  # The normalization method to apply
+    aliases: Optional[Sequence[str] | str] = None
+    na_values: Optional[Sequence[Any] | Any] = None
+    fill_na: Optional[str] = None
+    reviews: Optional[dict[TDReviewMethod, dict] | TDReviewMethod] = None
+    normalization: Optional[
+        dict[TDNormalizationMethod, dict] | TDNormalizationMethod] = None
     
     def __post_init__(self) -> None:
         self.aliases: set = set(self.aliases or [])
         self.aliases.add(self.name)
     
+    # --------------------------- Instance methods ------------------------- #
+    def is_alias(self, alias: str) -> bool:
+        """
+        Check if given column name is an alias for this column.
+        """
+        return alias in self.aliases
+    
+    # ------------------------- Serialization Methods ---------------------- #
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ColumnConfig:
-        """Parse column config from YAML dict."""
+    def from_dict(
+        cls,
+        name: str,
+        data: dict[str, Any]
+    ) -> ColumnConfig:
+        """Parse column config from dict."""
         # Handle checks - can be None, list of dicts, or list with None
-        raw_checks: dict[str, Any] = data.get("checks") or dict()
-        checks = []
-        for check_method, parameters in raw_checks.items():
-            check = ColumnCheck(check_method, parameters)
-            checks.append(check)
-        
-        checks = checks if checks else None
-        return cls(
-            name=data["name"],
-            dtype=data["dtype"],
-            description=data.get("description"),
-            aliases=data.get("aliases"),
-            nullable=data.get("nullable", True),
-            allow_duplicates=data.get("allow_duplicates", True),
-            fill_na=data.get("fill_na"),
-            checks=checks,
-            normalization=data.get("normalization")
-        )
+        parameters = {
+            "name": name,
+            "dtype": data.get("dtype"),
+            "description": data.get("description"),
+            "aliases": str_sequence_param(data.get("aliases"), tuple),
+            "na_values": str_sequence_param(data.get("na_values", tuple)),
+            "fill_na": data.get("fill_na"),
+            "reviews": data.get("reviews"),
+            "normalization": data.get("normalization")
+        }
+        return cls(**parameters)
     
     def to_dict(self) -> dict[str, Any]:
         """Convert back to YAML-compatible dict."""
@@ -75,18 +70,9 @@ class ColumnConfig:
             "name": self.name,
             "dtype": self.dtype,
             "description": self.description,
-            "aliases": self.aliases if self.aliases else None,
-            "nullable": self.nullable,
-            "allow_duplicates": self.allow_duplicates,
+            "aliases": tuple(self.aliases),
+            "na_values": self.na_values,
             "fill_na": self.fill_na,
-            "checks": {
-                c.name: c.parameters for c in self.checks
-            } if self.checks else None,
+            "reviews": self.reviews,
             "normalization": self.normalization
         }
-    
-    def is_alias(self, alias: str) -> bool:
-        """
-        Check if given column name is an alias for this column.
-        """
-        return alias in self.aliases
