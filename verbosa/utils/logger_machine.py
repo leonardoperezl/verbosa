@@ -4,7 +4,7 @@ from typing import Literal, Optional, Sequence
 import logging.config
 
 
-from verbosa.utils.global_typings import Pathlike
+from verbosa.utils.typings import Pathlike
 from verbosa.utils.validation_helpers import is_file_path
 from verbosa.data.readers.local import FileDataReader
 

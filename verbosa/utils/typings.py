@@ -26,9 +26,9 @@ TDViewer = Literal[
 ]
 
 TDNormalizationMethod = Literal[
-    "date",
-    "text"
+    "text",
     "numeric",
+    "date",
     "categorical",
     "text_stressed",
     "text_relaxed"

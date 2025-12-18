@@ -10,7 +10,7 @@ import pandas as pd
 import yaml
 
 
-from verbosa.utils.global_typings import Pathlike
+from verbosa.utils.typings import Pathlike
 
 
 logger = logging.getLogger(__name__)

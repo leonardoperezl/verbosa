@@ -10,3 +10,4 @@ def is_file_path(path: str, extension: Optional[str] = None) -> bool:
     extension = extension.lstrip(".") if extension else None
     if extension:
         return is_file and Path(path).suffix == extension
+    return is_file

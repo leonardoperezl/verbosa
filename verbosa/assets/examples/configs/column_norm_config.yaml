@@ -35,8 +35,11 @@ columns:
     aliases:
       - date
       - transaction_date
-    na_values: "0000-00-00"
-    fill_na: null  # No need to explicitly declare it if is null
+    na_values:
+      - "0000-00-00"
+      - "9999-99-99"
+      - "SIN FECHA"
+    fill_na: "1970-01-01"
     reviews:
       no_na:
         tolerance: 0.0
@@ -56,11 +59,11 @@ columns:
       - definicion
       - descripcion
     na_values:
-      - "SALDO ANTERIOR"
-      - "SALDO INICIAL"
+      - "re.Pattern('[ERROR.+?]')"
     reviews:
       no_na:
         tolerance: 0.0
+    fill_na: "[ERROR DE LECTURA]"
     normalization:
       text:
         strip: both
@@ -77,14 +80,12 @@ columns:
       - amount
       - transaction_amount
     na_values: 0.0
+    fill_na: null
     reviews:
       no_na:
         tolerance: 0.0
       min_value: 0.0
-    normalization:
-      numeric:
-        dtype: Float64
-        cleanup_pattern: "[$\\s,%]"
+    normalization: numeric_float
   
   tipo:
     description: Tipo de la transacción (ingreso/egreso)
@@ -93,6 +94,7 @@ columns:
       - type
       - transaction_type
     na_values: null
+    fill_na: null
     reviews:
       no_na:
         tolerance: 0.0
@@ -116,6 +118,8 @@ columns:
     aliases:
       - balance
       - account_balance
+    na_values: 0.0
+    fill_na: null
     reviews:
       no_na:
         tolerance: 0.0
@@ -143,3 +147,13 @@ columns:
         delete_non_ascii: True
         ordered: False
         sort_categories: True
+  
+  is_spei:
+    description: Indica si la transacción es SPEI o no
+    dtype: boolean
+    aliases:
+      - spei_flag
+    na_values: null
+    fill_na: false
+    reviews: null
+    normalization: null

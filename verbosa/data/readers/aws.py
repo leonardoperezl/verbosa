@@ -7,7 +7,7 @@ import awswrangler as wr
 import pandas as pd
 
 
-from verbosa.utils.global_typings import TDViewer
+from verbosa.utils.typings import TDViewer
 from verbosa.utils.validation_helpers import is_file_path
 
 

@@ -163,9 +163,11 @@ cython_debug/
 .vscode/
 *.code-workspace
 
-# Project-specific outputs
+# Project-specific outputs and deletable files
 output/
 drafts/
+demo/
+notebooks/
 
 # Temporary files
 *.tmp
