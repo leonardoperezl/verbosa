@@ -2,7 +2,6 @@ from collections import OrderedDict
 
 from pandas import read_csv, DataFrame
 import pytest
-import streamlit as st
 
 
 from verbosa.utils.config import EXAMPLES_DIRECTORY
