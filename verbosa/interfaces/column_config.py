@@ -79,15 +79,17 @@ def _freeze(
     # Handle mappings (dict-like)
     if isinstance(value, Mapping):
         # Freeze keys+values and sort for determinism
-        return tuple(sorted((k, _freeze(v)) for k, v in value.items()))
+        return tuple(
+            sorted((k, _freeze(v, map_sort_key)) for k, v in value.items())
+        )
     
     # Handle sequences
     if isinstance(value, (list, tuple)):
-        return tuple(_freeze(v) for v in value)
+        return tuple(_freeze(v, map_sort_key) for v in value)
     
     # Handle sets
     if isinstance(value, set):
-        return frozenset(_freeze(v) for v in value)
+        return frozenset(_freeze(v, map_sort_key) for v in value)
     
     # Leave everything else as-is (strings, ints, regex patterns,
     # pd.Timestamp, etc.)
@@ -179,7 +181,7 @@ class CallSpec:
         keys_and_values: list[tuple[str, Any]] = []
         for k, v in params.items():
             v = _cast_string(v)
-            v = _freeze(v)
+            v = _freeze(v, sort_key)
             keys_and_values.append((k, v))
         
         return cls(
