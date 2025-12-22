@@ -5,7 +5,6 @@ description = "A small library that streamlines everyday data handling tasks lik
 authors = [
     {name = "Pérez Lázaro Leonardo", email = "leonardo.perezlazaro@gmail.com"}
 ]
-license = "LICENSE"
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
