@@ -59,7 +59,7 @@ columns:
       - definicion
       - descripcion
     na_values:
-      - "re.Pattern('[ERROR.+?]')"
+      - "re.Pattern('\\[ERROR.+?\\]')"
     reviews:
       no_na:
         tolerance: 0.0
@@ -136,6 +136,9 @@ columns:
     aliases:
       - classification
       - transaction_classification
+    na_values:
+      - BASE
+      - SIN CLASE
     fill_na: SIN CLASIFICACION
     normalization:
       categorical:

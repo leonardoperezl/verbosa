@@ -41,7 +41,7 @@ handlers:
   testing_rotating_file:
     class: logging.handlers.TimedRotatingFileHandler
     level: DEBUG
-    formatter: short
+    formatter: simple
     filename: ./output/logs/verbosa_testing.log
     when: S
     interval: 1
