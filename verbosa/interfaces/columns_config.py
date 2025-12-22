@@ -1,23 +1,20 @@
 from __future__ import annotations
+from collections import OrderedDict
 from collections.abc import Mapping
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Optional, Sequence
 import logging
 
 
-import yaml
-
-
-from verbosa.utils.global_typings import Pathlike
-from verbosa.interfaces.column_config import ColumnConfig
+from verbosa.utils.typings import Pathlike
+from verbosa.interfaces.column_config import (
+    ColumnConfig, CallSpec, StrCastedDTypes
+)
 from verbosa.data.readers.local import FileDataReader
 
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class ColumnsConfig(Mapping[str, ColumnConfig]):
     """
     A representation of the data found at a columns configuration file.
@@ -41,43 +38,42 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
     columns : Sequence[ColumnConfig]
         List of column configurations
     """
-    name: str
-    description: str
-    author: str
-    date: str
-    columns: Sequence[ColumnConfig]
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        author: str,
+        date: str,
+        columns: Sequence[ColumnConfig]
+    ) -> None:
+        self.name: str = name
+        self.description: str = description
+        self.author: str = author
+        self.date: str = date
+        self._columns = tuple(columns)
+        self.columns: tuple[str] = tuple(col.name for col in self._columns)
+        self._build_index()
     
-    def __post_init__(self) -> None:
+    def _build_index(self) -> None:
         """
         Build index for column lookup by name/alias.
         """
         self._index: dict[str, ColumnConfig] = {}
         
-        for col in self.columns:
-            # Index by primary name
-            if col.name not in self._index:
-                self._index[col.name] = col
-            else:
-                logger.debug(
-                    f"Duplicated name detected while indexing {col.name}"
-                )
-            
-            #* Index by all aliases. Comment to avoid name/alias conflicts
+        for col in self._columns:
             for alias in col.aliases:
                 if alias not in self._index:
                     self._index[alias] = col
-                else:
-                    logger.debug(
-                        f"Conflict while indexing alias {alias} for column "
-                        f"{col.name}",
-                    )
+                    continue
+                
+                logger.debug(
+                    f"Conflict while indexing alias {alias} for column "
+                    f"{col.name}",
+                )
             
             # (self._index[col.name] is self._index[alias]) == True
-        
-        self.column_names: tuple[str] = tuple(
-            col.name for col in self.columns
-        )
     
+    # ------------------------- Dunder Methods ----------------------------- #
     def __getitem__(self, key: str) -> ColumnConfig:
         """
         Mapping access by name or alias (case-insensitive).
@@ -103,22 +99,27 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         """
         Iterate over primary column names in their original order.
         """
-        for col in self.columns:
-            yield col.name
+        for col in self._columns: yield col.name
     
     def __len__(self) -> int:
         """
         Number of *columns* (primary entries), preserving sequence semantics.
         """
-        return len(self.columns)
+        return len(self._columns)
     
     def __contains__(self, key: object) -> bool:
         """
         Membership by name or alias, case-insensitive.
         """
-        if not isinstance(key, str):
-            return False
+        if not isinstance(key, str): return False
         return key in self._index
+    
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"name={self.name!r}, "
+            f"columns={len(self._columns)})"
+        )
     
     # ------------------------- Serialization Methods ---------------------- #
     @classmethod
@@ -150,10 +151,10 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         if not columns_data:
             raise ValueError("Configuration must contain 'columns' list")
         
-        columns = [
+        columns = tuple(
             ColumnConfig.from_dict(name=cname, data=cdata)
             for cname, cdata in columns_data.items()
-        ]
+        )
         
         return cls(
             name=data["name"],
@@ -167,50 +168,21 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         """
         Convert instance to a dictionary.
         """
-        result = {}
-        
-        # Add metadata if present
-        if self.name:
-            result["name"] = self.name
-        if self.description:
-            result["description"] = self.description
-        if self.author:
-            result["author"] = self.author
-        if self.date:
-            result["date"] = self.date
+        result = {
+            "name": self.name,
+            "description": self.description,
+            "author": self.author,
+            "date": self.date
+        }
         
         # Add columns
         result["columns"] = {
             col.name: col.to_dict()
-            for col in self.columns
+            for col in self._columns
         }
         return result
     
-    # TODO. To write the file use the data writer class
-    def to_yaml_file(self, file_path: Pathlike) -> None:
-        """
-        Save configuration to YAML file.
-        
-        Parameters
-        ----------
-        file_path : Pathlike
-            Path to save the YAML configuration file.
-        """
-        path = Path(file_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.dump(
-                self.to_dict(),
-                f,
-                default_flow_style=False,
-                allow_unicode=True,
-                sort_keys=False
-            )
-        
-        logger.info(f"Configuration saved to {path}")
-    
-    def validate(self) -> list[str]:
+    def validate_aliases(self) -> list[str]:
         """
         Validate configuration and return list of issues.
         
@@ -226,7 +198,7 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         issues = []
         
         seen_names: dict[str, list[str]] = {}
-        for col in self.columns:
+        for col in self._columns:
             seen_names.setdefault(col.name, []).append(col.name)
         
         duplicate_names = {
@@ -243,58 +215,111 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
                 f"Duplicate column names (case-insensitive): {formatted}"
             )
         
-        # 2) Overlapping names/aliases between columns (case-insensitive)
+        # 2) Overlapping names/aliases between columns (case-sensitive)
         #    We track where each normalized identifier came from.
-        used: dict[str, tuple[str, str]] = {}  # norm -> (kind, column_name)
-        
-        for col in self.columns:
-            # Primary name
-            if col.name in used:
-                prev_kind, prev_owner = used[col.name]
-                if prev_owner != col.name:
-                    # This is already covered by duplicate names, but we
-                    # keep this here in case you want a more detailed message.
-                    issues.append(
-                        f"Primary name {col.name!r} conflicts with "
-                        f"{prev_kind} of column {prev_owner!r}"
-                    )
-            else:
-                used[col.name] = ("name", col.name)
-            
+        used: set = set()
+        for col in self._columns:
             # Aliases
             for alias in col.aliases:
-                if alias in used:
-                    prev_kind, prev_owner = used[alias]
-                    if prev_owner != col.name:
-                        issues.append(
-                            f"Identifier {alias!r} on column {col.name!r} "
-                            f"conflicts with {prev_kind} of column "
-                            f"{prev_owner!r}"
-                        )
-                else:
-                    used[alias] = ("alias", col.name)
+                if alias not in used:
+                    used.add(alias)
+                    continue
+                
+                issues.append(
+                    f"Alias '{alias}' in column '{col.name}' "
+                    "overlaps with another column"
+                )
         
         return issues
     
-    def __len__(self) -> int:
+    def is_valid(self) -> bool:
         """
+        Check if configuration is valid.
+        
+        Returns
+        -------
+        bool
+            True if valid, False otherwise.
         """
-        return len(self.columns)
+        return len(self.validate_aliases()) == 0
     
-    def __getitem__(self, key: int | str) -> ColumnConfig | None:
-        if isinstance(key, int):
-            return self.columns[key]  # Access by index
-        elif isinstance(key, str):
-            search_name = key
-            col: ColumnConfig | None  = self._index.get(search_name)
-            if col is None:
-                return None
-            return col  # Access by name/alias
-        else:
-            raise TypeError(
-                f"Column key must be int or str, not {type(key).__name__}"
-            )
+    def group_by_normalization(self) -> tuple[tuple[CallSpec, tuple[str, ...]], ...]:
+        """
+        Group columns by each individual normalization "step".
+        
+        Returns
+        -------
+        tuple[tuple[CallSpec, tuple[str, ...]], ...]
+            Each entry is a pair:
+            (normalization_call_spec, (column_names...)).
+        
+        Notes
+        -----
+        - A single column may appear in multiple groups if it has a pipeline
+        with multiple steps.
+        - If you need *pipeline* grouping (columns sharing the same full
+        pipeline), use `group_by_normalization_pipeline`.
+        """
+        groups: OrderedDict[CallSpec, list[str]] = OrderedDict()
+        
+        for col in self._columns:
+            pipeline = col.normalization
+            if pipeline is None:
+                continue
+            for spec in pipeline:
+                groups.setdefault(spec, []).append(col.name)
+        
+        return tuple((spec, tuple(cols)) for spec, cols in groups.items())
     
-    def __iter__(self):
-        """Iterate over columns."""
-        return iter(self.columns)
+    def group_by_normalization_pipeline(
+        self,
+    ) -> tuple[tuple[tuple[CallSpec, ...], tuple[str, ...]], ...]:
+        """
+        Group columns by their full normalization pipeline.
+        
+        Returns
+        -------
+        tuple[tuple[tuple[CallSpec, ...], tuple[str, ...]], ...]
+            Each entry is a pair: (pipeline, (column_names...)).
+        """
+        groups: OrderedDict[tuple[CallSpec, ...], list[str]] = OrderedDict()
+        
+        for col in self._columns:
+            pipeline = col.normalization or ()
+            groups.setdefault(pipeline, []).append(col.name)
+        
+        return tuple(
+            (pipeline, tuple(cols)) for pipeline, cols in groups.items()
+        )
+    
+    def get_na_values_dict(
+        self
+    ) -> dict[str, Optional[tuple[StrCastedDTypes]]]:
+        """
+        Get a dictionary mapping column names to their na_values.
+        
+        Returns
+        -------
+        dict[str, Optional[tuple[AllowedCastingDTypes]]]
+            Mapping of column names to their na_values tuples.
+        """
+        result: dict[str, Optional[tuple[StrCastedDTypes]]] = {}
+        for col in self._columns:
+            result[col.name] = col.na_values
+        return result
+    
+    def get_columns_fill_na_dict(
+        self
+    ) -> dict[str, Optional[StrCastedDTypes]]:
+        """
+        Get a dictionary mapping column names to their fill_na values.
+        
+        Returns
+        -------
+        dict[str, Optional[AllowedCastingDTypes]]
+            Mapping of column names to their fill_na values.
+        """
+        result: dict[str, Optional[StrCastedDTypes]] = {}
+        for col in self._columns:
+            result[col.name] = col.fill_na
+        return result
