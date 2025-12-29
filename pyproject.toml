@@ -1,39 +1,53 @@
 [project]
 name = "verbosa"
 version = "0.1.0"
-description = "A small library that streamlines everyday data handling tasks like validating data types, enforcing integrity rules, and applying common data checks. It helps you write cleaner, more reliable code with less effort."
+description = """
+A small library that streamlines everyday data handling tasks like validating
+data types, enforcing integrity rules, and applying common data checks. It
+helps on writing cleaner, more reliable code with less effort.
+"""
 authors = [
-    {name = "Pérez Lázaro Leonardo", email = "leonardo.perezlazaro@gmail.com"}
+    {name = "Leonardo Pérez Lázaro", email = "leonardo.perezlazaro@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
     "pandas (>=2.3.3,<3.0.0)",
     "numpy (>=2.3.5,<3.0.0)",
+    "pyyaml (>=6.0.3,<7.0.0)",
+]
+
+
+# Optional dependencies, reduce stress on main installation
+[project.optional-dependencies]
+readers = [
     "boto3 (>=1.42.1,<2.0.0)",
     "awswrangler (>=3.14.0,<4.0.0)",
-    "pyyaml (>=6.0.3,<7.0.0)",
+]
+writers = [
     "openpyxl (>=3.1.5,<4.0.0)",
+]
+tmp = [
     "dash (>=3.3.0,<4.0.0)",
     "dash-ag-grid (>=32.3.4,<33.0.0)",
     "dash-bootstrap-components (>=2.0.4,<3.0.0)",
     "dash-mantine-components (>=2.4.0,<3.0.0)"
 ]
+test = [
+    "pytest (>=9.0.2,<10.0.0)",
+]
+
+
+# Poetry details
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+
+[tool.poetry]
+include = [
+    { path = "verbosa/assets/**", format = ["sdist", "wheel"] },
+]
+
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
-
-[dependency-groups]
-test = [
-    "pytest (>=9.0.2,<10.0.0)"
-]
-
-[tool.poetry]
-include = [
-  { path = "verbosa/assets/**", format = "wheel" },
-  { path = "verbosa/assets/**", format = "sdist" },
-]
-
-[tool.poetry.dependencies]
-python = ">=3.12,<4.0"
