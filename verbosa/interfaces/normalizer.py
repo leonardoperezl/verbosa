@@ -1,6 +1,8 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Optional, Any, TypeVar, Protocol, runtime_checkable, Generic
+from typing import (
+    runtime_checkable, Optional, Any, TypeVar, Protocol, Generic
+)
 import logging
 
 import pandas as pd
@@ -79,6 +81,7 @@ class NormalizerInterface(ABC, Generic[T]):
         ValueError
             If no normalization settings are provided
         """
+        
         if self.autonorm_settings is None:
             raise ValueError(
                 "No normalization settings provided. Cannot perform automatic "
@@ -103,6 +106,7 @@ class NormalizerInterface(ABC, Generic[T]):
         T
             The normalized data
         """
+        
         return self.data
     
     def validate_data(self) -> bool:
@@ -117,25 +121,8 @@ class NormalizerInterface(ABC, Generic[T]):
         bool
             True if data is valid for normalization, False otherwise
         """
+        
         if self.data is None:
             logger.warning("Data is None, cannot perform normalization.")
             return False
         return True
-    
-    def get_data_info(self) -> dict[str, Any]:
-        """
-        Get basic information about the data being normalized.
-        
-        This method can be overridden by subclasses to provide specific
-        information relevant to their data type.
-        
-        Returns
-        -------
-        dict[str, Any]
-            Dictionary containing basic information about the data
-        """
-        return {
-            "data_type": type(self.data).__name__,
-            "has_autonorm_settings": self.autonorm_settings is not None,
-            "is_valid": self.validate_data()
-        }

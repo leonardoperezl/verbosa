@@ -4,13 +4,45 @@ from typing import Any
 from datetime import datetime
 import pandas as pd
 
-from verbosa.interfaces.column_config import ColumnConfig, CallSpec
+from verbosa.interfaces.column_config import (
+    _freeze,
+    _unfreeze,
+    ColumnConfig,
+    CallSpec,
+)
 from tests.fixtures.dictionaries_test import (
     concept_column,
     notes_column,
     is_spei_column,
     date_column
 )
+
+
+def test_freeze_function() -> None:
+    test_dict = {
+        "key1": "single_value",
+        "key2": ["list", "of", "values"],
+    }
+    output_dict = _freeze(test_dict)
+    expected_output = (
+        ("key1", "single_value"),
+        ("key2", ("list", "of", "values")),
+    )
+    
+    assert output_dict == expected_output
+
+
+def test_unfreeze_function() -> None:
+    test_frozen = (
+        ("key1", "single_value"),
+        # ("key2", ("list", "of", "values")),
+    )
+    output_dict = _unfreeze(test_frozen)
+    expected_output = {
+        "key1": "single_value",
+        # "key2": ["list", "of", "values"],
+    }
+    assert output_dict == expected_output
 
 
 def test_from_dict(concept_column) -> None:
@@ -28,7 +60,7 @@ def test_from_dict(concept_column) -> None:
     assert concept.dtype == "string"
     assert concept.description == "The concept of the transaction"
     assert concept.aliases == {"concept", "concepto", "transaction_concept"}
-    assert concept.na_values == ("N/A", "unknown")
+    assert concept.na_values == ("N/A",)
     assert concept.fill_na == "READING ERROR"
     
     # Check that reviews are stored as CallSpec objects

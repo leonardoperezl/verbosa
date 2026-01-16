@@ -10,10 +10,7 @@ def concept_column() -> dict[str, Any]:
         "dtype": "string",
         "description": "The concept of the transaction",
         "aliases": ["concepto", "transaction_concept"],
-        "na_values": [
-            "N/A",
-            "unknown"
-        ],
+        "na_values": "N/A",
         "fill_na": "READING ERROR",
         "reviews": {
             "no_na": {"tolerance": 0.0},

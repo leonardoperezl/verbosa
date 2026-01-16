@@ -8,6 +8,7 @@ import re
 from pandas.api.types import (
     is_numeric_dtype,
     is_datetime64_any_dtype,
+    is_object_dtype
 )
 import pandas as pd
 
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 #                               CUSTOM TYPINGS                               #
 ##############################################################################
 
-NAValues: TypeAlias = Optional[Sequence[str | re.Pattern | int | float]]
+NAValues: TypeAlias = Optional[str | re.Pattern | int | float]
 
 NormalizedStringDType: TypeAlias = Literal["string"]
 NormalizedNumericDType: TypeAlias = Literal["Int64", "Float64"]
@@ -48,6 +49,7 @@ NormalizedDType: TypeAlias = (
     NormalizedBooleanDType
 )
 
+CastingErrorHandling: TypeAlias = Literal["raise", "ignore", "coerce"]
 
 
 ##############################################################################
@@ -85,6 +87,21 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     columns_config : ColumnsConfig
         Loaded configuration object containing normalization specifications
     """
+    
+    # Class attributes
+    STRING_DTYPES: set = {"string"}
+    NUMERIC_DTYPES: set = {"Int64", "Float64"}
+    DATE_DTYPES: set = {"datetime64[ns]", "datetime64[ns, UTC]"}
+    CATEGORICAL_DTYPES: set = {"category"}
+    BOOLEAN_DTYPES: set = {"boolean"}
+    
+    ALL_DTYPES = (
+        STRING_DTYPES
+        .union(NUMERIC_DTYPES)
+        .union(DATE_DTYPES)
+        .union(CATEGORICAL_DTYPES)
+        .union(BOOLEAN_DTYPES)
+    )
     
     data: pd.DataFrame
     
@@ -204,7 +221,9 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             )
             self.data = method(**method_params)
         
-        logger.info("Completed applying normalization methods to column groups.")
+        logger.info(
+            "Completed applying normalization methods to column groups."
+        )
     
     def _fill_na_values(self) -> None:
         logger.info("Filling defined NA values in columns.")
@@ -220,6 +239,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     def text(
         self,
         columns: Sequence[str],
+        error: CastingErrorHandling = "coerce",
         strip: Optional[Literal["both", "left", "right"]] = None,
         compact_whitespace: Optional[Any] = None,
         case: Optional[Literal["lower", "upper", "title"]] = None,
@@ -246,7 +266,13 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         )
         
         for column in columns:
-            s = self.data[column].astype("string")
+            s = self.data[column]
+            
+            if error == "coerce":
+                not_str_mask = s.str.upper().isna() & s.notna()
+                s = s.mask(not_str_mask, pd.NA).astype("string")
+            else:
+                s = s.astype("string", errors=error)
             
             if cleanup_re is not None:
                 s = s.str.replace(cleanup_re, "", regex=True)
@@ -287,57 +313,94 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     def numeric(
         self,
         columns: Sequence[str],
-        dtype: Optional[Literal["Int64", "Float64"]] = "Float64",
+        dtype: NormalizedNumericDType = "Float64",
+        errors: CastingErrorHandling = "coerce",
         cleanup_pattern: Optional[str] = None
     ) -> pd.DataFrame:
+        """
+        Normalizes numeric columns in the DataFrame. Useful for giving the
+        provided columns a consistent numeric dtype, and for attempting to
+        convert non-numeric columns to numeric by cleaning up unwanted
+        characters. Use it when the expected dtype of the column(s) is known.
+        
+        Normalization rules
+        -------------------
+        1. Check if a cleanup pattern was provided, if so, remove all matches
+        from the column and then cast it to the provided dtype.
+        2. If no cleanup pattern was provided, check if the column is a
+        non-numeric dtype. If so, attempt to convert it to numeric using
+        `pd.to_numeric` with the provided error handling strategy.
+        3. Finally, cast the column to the provided dtype.
+        
+        Parameters
+        ----------
+        columns : Sequence[str]
+            List of column names to normalize as numeric
+        
+        dtype : NormalizedNumericDType, optional
+            The target numeric dtype for the columns. Default is "Float64".
+        
+        errors : CastingErrorHandling, optional
+            Error handling strategy when converting to numeric.
+        
+        cleanup_pattern : Optional[str], optional
+            Regular expression pattern to clean up unwanted characters
+            from the columns before conversion.
+        
+        Returns
+        -------
+        pd.DataFrame
+            The DataFrame with normalized numeric columns.
+        """
+        
         logger.info(
             f"Normalizing numeric columns: {columns} with options:\n"
             f"- dtype: {dtype}\n"
             f"- cleanup_pattern: {cleanup_pattern}"
         )
         
-        # 1) Separate numeric and non-numeric columns (preserve order)
-        numeric: list[str] = []
-        non_numeric: list[str] = []
-        for col in columns:
-            if is_numeric_dtype(self.data[col]): numeric.append(col)
-            else: non_numeric.append(col)
-        
-        logger.debug(
-            f"Detected:\n"
-            f"- Numeric columns: {numeric}.\n"
-            f"- Non-numeric columns: {non_numeric}"
-        )
-        
-        # 2) Convert all numeric columns to desired dtype (vectorized)
-        if numeric:
-            self.data[numeric] = self.data[numeric].astype(dtype)
-        
-        # 3) For non-numeric columns, attempt conversion to numeric
-        # Compile cleanup pattern once if provided
-        cleanup_re = (
-            re.compile(cleanup_pattern)
-            if cleanup_pattern is not None else None
-        )
-        
-        for col in non_numeric:
-            s = self.data[col].astype("string")
-            if cleanup_re is not None:
-                s = s.str.replace(cleanup_re, "", regex=True)
+        for column in columns:
+            s: pd.Series = self.data[column]
             
-            try:
-                self.data[col] = s.astype(dtype, errors="raise")
-                numeric.append(col)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to convert column '{col}' to numeric type "
-                    f"'{dtype}'. Skipping column, try to improve the "
-                    f"cleanup_pattern for better parsing. Error: {e}"
-                )
-            else:
+            # 1) Apply cleanup pattern if provided
+            if cleanup_pattern is not None:
+                cleanup_re: re.Pattern = re.compile(cleanup_pattern)
+                
+                try:
+                    # 1.1) Apply cleanup if the column can be casted to string
+                    s = s.astype("string")
+                    s = s.str.replace(cleanup_re, "", regex=True)
+                    logger.debug(
+                        f"Applied cleanup pattern to column '{column}'"
+                    )
+                except Exception as e:
+                    # 1.2) Log the column and skip this step
+                    logger.warning(
+                        f"Failed to apply cleanup pattern to column "
+                        f"'{column}': {e}"
+                    )
+            
+            # 2) Attempt conversion, if cleanup_pattern was provided, the
+            # column will be string at this point (always)
+            if errors != "coerce":
+                s = s.astype(dtype, errors=errors)
+                continue
+            
+            pre_na_count = int(s.isna().sum())
+            s = pd.to_numeric(s, errors="coerce")
+            na_count = int(s.isna().sum())
+            
+            if na_count > pre_na_count:
                 logger.debug(
-                    f"Successfully converted column '{col}' to {dtype}."
+                    f"Column '{column}': converted to numeric with "
+                    f"{na_count - pre_na_count} additional NA values "
+                    f"(original: {pre_na_count}, after conversion: "
+                    f"{na_count})"
                 )
+            
+            s = s.astype(dtype)
+            self.data[column] = s
+            logger.debug(f"Successfully normalized numeric column: {column}")
         
         logger.info("Completed numeric normalization.")
         return self.data
@@ -501,7 +564,8 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             f"- delete_diacritics: {delete_diacritics}\n"
             f"- delete_non_ascii: {delete_non_ascii}\n"
             f"- cleanup_pattern: {cleanup_pattern}\n"
-            f"- ordered: {ordered}, sort_categories: {sort_categories}"
+            f"- ordered: {ordered}\n"
+            f"- sort_categories: {sort_categories}"
         )
         
         # 1) Apply text normalization first using the text method
@@ -518,10 +582,12 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         
         # 2) Convert each column to categorical with inferred categories
         for column in columns:
-            # Get unique values (categories) from the column
-            unique_values = self.data[column].dropna().unique()
+            s: pd.Series = self.data[column]
             
-            # Sort categories if requested
+            # 2.1) Get unique values (categories) from the column
+            unique_values = s.dropna().unique()
+            
+            # 2.2) Sort categories if requested
             if sort_categories:
                 try:
                     categories = sorted(unique_values)
@@ -535,14 +601,12 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             else:
                 categories = unique_values
             
-            # Convert to categorical
+            # 2.3) Convert to categorical dtype
             self.data[column] = pd.Categorical(
-                self.data[column],
-                categories=categories,
-                ordered=ordered
+                s, categories=categories, ordered=ordered
             )
             
-            tmp = '(ordered)' if ordered else ''
+            tmp = "(ordered)" if ordered else ""
             has_na = self.data[column].isna().any()
             logger.debug(
                 f"Successfully normalized categorical column '{column}' "
@@ -555,13 +619,46 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     
     def boolean(
         self,
-        columns: Sequence[str]
+        columns: Sequence[str],
+        true_values: Optional[Sequence[Any] | Any] = None,
+        false_values: Optional[Sequence[Any] | Any] = None
     ) -> pd.DataFrame:
         logger.info(f"Normalizing boolean columns: {columns}")
         
         for column in columns:
-            s = self.data[column].astype("boolean", errors="ignore")
+            s: pd.Series = self.data[column]
+            
+            # 1) Convert true_values and false_values to lists if provided
+            if true_values is not isinstance(
+                true_values, (list, tuple, set, frozenset)
+            ):
+                true_values = [true_values]
+            if false_values is not isinstance(
+                false_values, (list, tuple, set, frozenset)
+            ):
+                false_values = [false_values]
+            
+            # 2) Map true and false values if provided
+            if true_values is not None:
+                s = s.replace(true_values, True)
+            if false_values is not None:
+                s = s.replace(false_values, False)
+            
+            # 3) Convert to boolean dtype with coercion
+            pre_na_count = int(s.isna().sum())
+            s = s.astype("boolean", errors="coerce")
+            na_count = int(s.isna().sum())
+            
+            if na_count > pre_na_count:
+                logger.debug(
+                    f"Column '{column}': converted to boolean with "
+                    f"{na_count - pre_na_count} additional NA values "
+                    f"(original: {pre_na_count}, after conversion: "
+                    f"{na_count})"
+                )
+            
             self.data[column] = s
+            logger.debug(f"Successfully normalized boolean column: {column}")
         
         logger.info("Completed boolean normalization.")
         return self.data
@@ -569,128 +666,140 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     # --------------------------- API. NA methods -------------------------- #
     def convert_to_na(
         self,
-        column_na_values: dict[str, NAValues]
+        columns_and_nas: dict[str, Optional[NAValues | Sequence[NAValues]]]
     ) -> None:
         logger.info(
-            "Converting provided na values in columns: "
-            f"{', '.join(column_na_values.keys())}"
+            f"Converting defined NA values to pd.NA in columns: "
+            f"{", ".join(columns_and_nas.keys())}"
         )
         
-        for column, na_values in column_na_values.items():
-            if column not in self.data.columns:
-                logger.warning(
-                    f"The column '{column}' is not present in the data. "
-                    f"Skipping."
-                )
-                continue
-            
+        for column, na_values in columns_and_nas.items():
             if na_values is None:
-                logger.debug(
-                    f"Column '{column}': no NA values provided, skipping."
+                continue
+            
+            # 1) If single value provided, convert to list
+            if not isinstance(na_values, (list, tuple, set, frozenset)):
+                na_values = [na_values]
+            
+            s: pd.Series = self.data[column]
+            dtype: str = str(s.dtype)
+            
+            # 2) If the column dtype is not normalized, skip conversion
+            if dtype not in self.ALL_DTYPES:
+                logger.warning(
+                    f"Column '{column}' of type {dtype} is not of a normalized "
+                    f"dtype, please use a normalization method and try again. "
+                    f"Skipping NA conversion."
                 )
                 continue
             
-            # Convert na_values to tuple for consistency
-            if isinstance(na_values, (str, re.Pattern)):
-                na_values = (na_values,)
-            elif not isinstance(na_values, Sequence):
-                na_values = (na_values,)
-            na_values = tuple(na_values)
+            # 3) Get a mask for all NA values
+            na_mask: pd.Series = s.isin(na_values)
+            na_count: int = int(na_mask.sum())
             
-            s = self.data[column]
-            is_cat = isinstance(s.dtype, pd.CategoricalDtype)
+            if dtype in self.CATEGORICAL_DTYPES:
+                # 3.1) Remove categories that are being converted to NA
+                current_categories = s.cat.categories.tolist()
+                self.data[column] = s.cat.remove_categories([
+                    val for val in na_values if val in current_categories
+                ])
             
-            literal_nas = [
-                na for na in na_values if not isinstance(na, re.Pattern)
-            ]
-            pattern_nas = [
-                na for na in na_values if isinstance(na, re.Pattern)
-            ]
+            self.data.loc[na_mask, column] = pd.NA
             
-            # 
-            if is_cat and literal_nas:
-                categories = s.dtype.categories
-                # Keep only those literal NA markers that actually exist as
-                # categories
-                literal_nas = [
-                    v for v in literal_nas if v in categories
-                ]
-            
-            # Replace literal na values
-            if literal_nas:
-                na_count = int(s.isin(literal_nas).sum())
-                mask = s.isin(literal_nas)
-                s = s.mask(mask, pd.NA)
-                logger.debug(
-                    f"Column '{column}': replaced {na_count} identified NA "
-                    f"values ({literal_nas})"
-                )
-            
-            # Pattern-based replacement
-            if pattern_nas:
-                # For categoricals, operate on string view, then mask into c
-                s = s.astype("string")
-                for pattern in pattern_nas:
-                    matches = s.str.match(pattern).fillna(False)
-                    na_count = int(matches.sum())
-                    s = s.mask(matches, pd.NA)
-                    logger.debug(
-                        f"Column '{column}': replaced {na_count} identified "
-                        f"NA values (pattern: {pattern.pattern})"
-                    )
-            
-            self.data[column] = s
+            logger.debug(
+                f"Column '{column}': converted {na_count} values to pd.NA "
+                f"using defined NA values: {na_values}"
+            )
+        
+        logger.info("Completed conversion of defined NA values to pd.NA.")
     
     def fill_na(
         self,
-        column_fill_values: dict[str, Any]
-    ) -> None:
+        columns_and_fills: dict[str, Any]
+    ) -> pd.Series:
         logger.info(
-            "Filling NA values in columns: "
-            f"{', '.join(column_fill_values.keys())}"
+            f"Filling NA values in columns: "
+            f"{", ".join(columns_and_fills.keys())} with the following "
+            f"values respectively: {columns_and_fills.values()}"
         )
         
-        for column, fill_value in column_fill_values.items():
-            if column not in self.data.columns:
+        for column, fill_value in columns_and_fills.items():
+            s: pd.Series = self.data[column]
+            dtype = str(s.dtype)
+            
+            # 1) Check if the column dtype is already normalized
+            if dtype not in self.ALL_DTYPES:
                 logger.warning(
-                    f"The column '{column}' is not present in the data. "
-                    f"Skipping."
+                    f"Column '{column}' of type {dtype} is not of a "
+                    f"normalized dtype, please use a normalization method "
+                    f"and try again. Skipping NA filling."
                 )
                 continue
             
-            if pd.isna(fill_value) or (fill_value is None):
-                logger.debug(
-                    f"Column '{column}': fill value is NA, skipping."
+            # 2) Apply filling based on dtype, if not supported, use pandas
+            # default behavior
+            if dtype in self.STRING_DTYPES:
+                s = self._string_fill_na(column, fill_value)
+            elif dtype in self.NUMERIC_DTYPES:
+                fill_value = float(fill_value)
+                s = s.fillna(fill_value)
+            elif dtype in self.CATEGORICAL_DTYPES:
+                s = self._categorical_fill_na(column, fill_value)
+            else:
+                logger.warning(
+                    f"NA filling for dtype '{dtype}' not implemented yet. "
+                    f"Using pandas default fillna behavior."
                 )
-                continue
+                s = s.fillna(fill_value)
             
-            c = self.data[column]
-            na_count = int(c.isna().sum())
-            if na_count == 0:
-                logger.debug(f"Column '{column}': no NA values to fill.")
-                continue
-            
-            # --- Categorical handling ---
-            if pd.api.types.is_categorical_dtype(c):
-                cat = c.dtype  # pandas.CategoricalDtype
-                categories = cat.categories
-                
-                # If fill_value is not an existing category, add it.
-                # (Categorical cannot accept new values unless they are in
-                # categories.)
-                if fill_value not in categories:
-                    logger.debug(
-                        f"Column '{column}': adding {fill_value!r} to "
-                        f"categories before filling NA."
-                    )
-                    self.data[column] = c.cat.add_categories([fill_value])
-                    c = self.data[column]  # refresh reference
-            
-            self.data[column] = c.fillna(fill_value)
+            self.data[column] = s
+            logger.debug(f"Successfully filled NA values in column: {column}")
+        
+        logger.info("Completed filling NA values.")
+        return self.data
+    
+    def _string_fill_na(
+        self,
+        column: str,
+        fill_value: str
+    ) -> pd.Series:
+        fill_value = str(fill_value)
+        s = self.data[column]
+        
+        na_count = int(s.isna().sum())
+        s = s.fillna(fill_value)
+        s = s.astype("string")
+        
+        logger.debug(
+            f"Column '{column}': filled {na_count} NA values with "
+            f"'{fill_value}'"
+        )
+        return s
+    
+    def _categorical_fill_na(
+        self,
+        column: str,
+        fill_value: Any
+    ) -> pd.Series:
+        s = self.data[column]
+        
+        # 1) Add fill_value to categories if not present
+        if fill_value not in s.cat.categories:
+            s = s.cat.add_categories([fill_value])
             logger.debug(
-                f"Column '{column}': filled {na_count} NA values with "
-                f"{fill_value!r}"
+                f"Column '{column}': added fill value '{fill_value}' to "
+                f"categories"
             )
+        
+        # 2) Fill NA values
+        na_count = int(s.isna().sum())
+        s = s.fillna(fill_value)
+        
+        logger.debug(
+            f"Column '{column}': filled {na_count} NA values with "
+            f"'{fill_value}'"
+        )
+        return s
     
     # -------------------- Specific normalization methods ------------------ #
     def text_stressed(
@@ -787,58 +896,27 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     # ---------------------- Interface implementation ---------------------- #
     def validate_data(self) -> bool:
         """
-        Validate that the DataFrame is in an acceptable state for normalization.
+        Validate that the DataFrame is in an acceptable state for
+        normalization.
         
         Returns
         -------
         bool
             True if data is valid for normalization, False otherwise
         """
+        
         if not super().validate_data():
             return False
-            
+        
         if not isinstance(self.data, pd.DataFrame):
             logger.error(
                 f"Expected pandas DataFrame, got {type(self.data).__name__}"
             )
             return False
-            
+        
         if self.data.empty:
-            logger.warning("DataFrame is empty")
+            logger.debug("DataFrame is empty")
             return False
-            
+        
         logger.debug("DataFrame validation passed")
         return True
-    
-    def get_data_info(self) -> dict[str, Any]:
-        """
-        Get comprehensive information about the DataFrame being normalized.
-        
-        Returns
-        -------
-        dict[str, Any]
-            Dictionary containing detailed information about the DataFrame
-        """
-        base_info = super().get_data_info()
-        
-        if not isinstance(self.data, pd.DataFrame):
-            return base_info
-            
-        df_info = {
-            "shape": self.data.shape,
-            "columns": list(self.data.columns),
-            "dtypes": self.data.dtypes.to_dict(),
-            "memory_usage_mb": self.data.memory_usage(deep=True).sum() / 1024**2,
-            "missing_values": self.data.isnull().sum().to_dict(),
-            "has_config": self.columns_config is not None,
-        }
-        
-        if self.columns_config is not None:
-            df_info.update({
-                "config_name": self.columns_config.name,
-                "config_description": self.columns_config.description,
-                "configured_columns": list(self.columns_config.keys()),
-            })
-        
-        base_info.update(df_info)
-        return base_info

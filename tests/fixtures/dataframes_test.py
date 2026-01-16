@@ -1,5 +1,3 @@
-from collections import OrderedDict
-
 from pandas import read_csv, DataFrame
 import pytest
 
@@ -19,6 +17,12 @@ CLIENT_MODIFIED_DF: DataFrame = read_csv(CLIENT_MODIFIED_PATH, quoting=1)
 CLIENT_TEST_DF: DataFrame = read_csv(CLIENT_TEST_PATH, quoting=1)
 
 
+CUSTOM_DF = DataFrame({
+    "noisy_text": ["normal text", 123, ["a", "b"], True, "another text"],
+    "noisy_numbers": ["1,000", None, "not a number", {2}, "$ 3000"]
+})
+
+
 @pytest.fixture
 def client() -> DataFrame:
     return CLIENT_DF
@@ -32,3 +36,8 @@ def client_modified() -> DataFrame:
 @pytest.fixture
 def client_test() -> DataFrame:
     return CLIENT_TEST_DF
+
+
+@pytest.fixture
+def custom() -> DataFrame:
+    return CUSTOM_DF
