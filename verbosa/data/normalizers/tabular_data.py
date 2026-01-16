@@ -158,16 +158,13 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         # 1) Sort the columns according to the order in the configuration
         self._sort_columns_as_config()
         
-        # 2) Convert defined NA values to pd.NA before normalization
-        self._convert_na_values()
-        
-        # 3) Apply normalization methods group by group
+        # 2) Apply normalization methods group by group
         self._apply_norm_methods()
         
-        # 4) Convert defined NA values to pd.NA
+        # 3) Convert defined NA values to pd.NA
         self._convert_na_values()
         
-        # 5) Fill NA values as defined in the configuration
+        # 4) Fill NA values as defined in the configuration
         self._fill_na_values()
         
         logger.info("Ended automatic normalization process successfully.")
@@ -667,7 +664,10 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     def convert_to_na(
         self,
         columns_and_nas: dict[str, Optional[NAValues | Sequence[NAValues]]]
-    ) -> None:
+    ) -> pd.DataFrame:
+        """
+        """
+        
         logger.info(
             f"Converting defined NA values to pd.NA in columns: "
             f"{", ".join(columns_and_nas.keys())}"
@@ -687,9 +687,9 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             # 2) If the column dtype is not normalized, skip conversion
             if dtype not in self.ALL_DTYPES:
                 logger.warning(
-                    f"Column '{column}' of type {dtype} is not of a normalized "
-                    f"dtype, please use a normalization method and try again. "
-                    f"Skipping NA conversion."
+                    f"Column '{column}' of type {dtype} is not of a "
+                    f"normalized dtype, please use a normalization method "
+                    f"and try again. Skipping NA conversion."
                 )
                 continue
             
@@ -712,11 +712,12 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             )
         
         logger.info("Completed conversion of defined NA values to pd.NA.")
+        return self.data
     
     def fill_na(
         self,
         columns_and_fills: dict[str, Any]
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         logger.info(
             f"Filling NA values in columns: "
             f"{", ".join(columns_and_fills.keys())} with the following "
