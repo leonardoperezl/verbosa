@@ -8,6 +8,7 @@ TDType = Literal[
     "datetime64[ns]",
     "Float64",
     "Int32",
+    "boolean"
 ]
 
 TDReviewMethod = Literal[
@@ -30,8 +31,13 @@ TDNormalizationMethod = Literal[
     "numeric",
     "date",
     "categorical",
+    "boolean",
     "text_stressed",
-    "text_relaxed"
+    "text_relaxed",
+    "numeric_float",
+    "numeric_int",
+    "date_yearfirst",
+    "date_dayfirst"
 ]
 
 Pathlike = str | Path

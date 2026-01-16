@@ -7,7 +7,7 @@ import logging
 
 from verbosa.utils.typings import Pathlike
 from verbosa.interfaces.column_config import (
-    ColumnConfig, CallSpec, StrCastedDTypes
+    StrCastedDTypes, ColumnConfig, CallSpec,
 )
 from verbosa.data.readers.local import FileDataReader
 
@@ -137,9 +137,15 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         ColumnsConfigFile
             Loaded configuration instance.
         """
-        data = FileDataReader.read_yaml(file_path=file_path)
+        data: Optional[Any] = FileDataReader.read_yaml(file_path=file_path)
         if not data:
             raise ValueError(f"Empty or invalid YAML file: {file_path}")
+        
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Invalid YAML structure in file: {file_path}, expected a "
+                "mapping"
+            )
         return cls.from_dict(data)
     
     @classmethod
@@ -148,10 +154,13 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         Create instance from dictionary.
         """
         columns_data: dict[str, Any] = data.get("columns", dict())
-        if not columns_data:
-            raise ValueError("Configuration must contain 'columns' list")
+        if not columns_data or not isinstance(columns_data, dict):
+            raise ValueError(
+                "Invalid columns configuration data, expected a mapping of "
+                "column names to their configurations."
+            )
         
-        columns = tuple(
+        columns: tuple[ColumnConfig, ...] = tuple(
             ColumnConfig.from_dict(name=cname, data=cdata)
             for cname, cdata in columns_data.items()
         )
@@ -166,7 +175,7 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
     
     def to_dict(self) -> dict[str, Any]:
         """
-        Convert instance to a dictionary.
+        Convert instance to a vanilla dictionary.
         """
         result = {
             "name": self.name,
@@ -250,8 +259,10 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         Returns
         -------
         tuple[tuple[CallSpec, tuple[str, ...]], ...]
-            Each entry is a pair:
-            (normalization_call_spec, (column_names...)).
+            Each entry is a pair of:
+            ```
+            (normalization_call_spec, (column_names, ...))
+            ```.
         
         Notes
         -----
@@ -294,7 +305,7 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
     
     def get_na_values_dict(
         self
-    ) -> dict[str, Optional[tuple[StrCastedDTypes]]]:
+    ) -> dict[str, Optional[tuple[StrCastedDTypes | str]]]:
         """
         Get a dictionary mapping column names to their na_values.
         
@@ -303,14 +314,14 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         dict[str, Optional[tuple[AllowedCastingDTypes]]]
             Mapping of column names to their na_values tuples.
         """
-        result: dict[str, Optional[tuple[StrCastedDTypes]]] = {}
+        result: dict[str, Optional[tuple[StrCastedDTypes | str]]] = {}
         for col in self._columns:
             result[col.name] = col.na_values
         return result
     
     def get_columns_fill_na_dict(
         self
-    ) -> dict[str, Optional[StrCastedDTypes]]:
+    ) -> dict[str, Optional[StrCastedDTypes | str]]:
         """
         Get a dictionary mapping column names to their fill_na values.
         
@@ -319,7 +330,7 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         dict[str, Optional[AllowedCastingDTypes]]
             Mapping of column names to their fill_na values.
         """
-        result: dict[str, Optional[StrCastedDTypes]] = {}
+        result: dict[str, Optional[StrCastedDTypes | str]] = {}
         for col in self._columns:
             result[col.name] = col.fill_na
         return result

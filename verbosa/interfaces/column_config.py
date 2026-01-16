@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Optional, Sequence, TypeAlias
+from typing import (
+    Any, Callable, Mapping, Optional, Sequence, TypeAlias, Hashable
+)
 import re
 import logging
 
@@ -13,14 +15,13 @@ from verbosa.utils.typings import (
     TDReviewMethod,
     TDNormalizationMethod
 )
-from verbosa.utils.serialization_helpers import str_sequence_param
 
 
 logger = logging.getLogger(__name__)
 
 
 AllowedNA: TypeAlias = str | float | int
-StrCastedDTypes: TypeAlias = re.Pattern | pd.Timestamp | str
+StrCastedDTypes: TypeAlias = re.Pattern | pd.Timestamp
 ReviewSpecInput: TypeAlias = (
     tuple["CallSpec", ...]
     | dict[TDReviewMethod, dict]
@@ -32,24 +33,42 @@ NormalizationSpecInput: TypeAlias = (
     | TDNormalizationMethod
 )
 
-_CASTING_PATTERN: re.Pattern = re.compile(
-    r"^(?P<dtype>.+?)\('(?P<value>.+?)'\)$"
+_CASTING_PATTERN: re.Pattern = (
+    re.compile(r"^(?P<dtype>.+?)\('(?P<value>.+?)'\)$")
 )
 
 
-def _cast_string(value: Any) -> StrCastedDTypes:
-    value = value
+def _cast_string(value: Any) -> StrCastedDTypes | Any:
+    """
+    Short helper for automatically casting a string of a specific format into
+    a computational datatype. The format should be:
+    ```
+    dtype('value')
+    ```
+    Where `dtype` is one of the supported types (e.g., `re.Pattern`,
+    `pd.Timestamp`, etc.) and `value` is the string representation of the
+    value to cast.
+    
+    Parameters
+    ----------
+    value : Any
+        The value to cast.
+    
+    Returns
+    -------
+    StrCastedDTypes | Any
+        A transformation from string to the target dtype. The following
+        scenarios will return the input value unchanged:
+        - Input is not a string.
+        - Input string does not match the expected format.  
+        - Unsupported dtype is specified.
+    """
     
     if not isinstance(value, str):
-        logger.debug(
-            f"The '{value}' of type '{type(value)}' "
-            f"can't be casted since is not string"
-        )
         return value
     
     match = _CASTING_PATTERN.fullmatch(value)
-    if match is None:
-        return value
+    if match is None: return value
     
     dtype_str = match.group("dtype").strip()
     cast_value = match.group("value").strip()
@@ -57,17 +76,10 @@ def _cast_string(value: Any) -> StrCastedDTypes:
     if dtype_str == "re.Pattern": return re.compile(cast_value)
     elif dtype_str == "pd.Timestamp": return pd.Timestamp(cast_value)
     
-    logger.warning(
-        f"Unknown casting type: {dtype_str}. "
-        f"Returning original string."
-    )
     return value
 
 
-def _freeze(
-    value: Any,
-    map_sort_key: Callable
-) -> Any:
+def _freeze(value: Any) -> Hashable:
     """
     Convert potentially-unhashable values into hashable equivalents
     recursively.
@@ -75,21 +87,38 @@ def _freeze(
     This is needed because frozen dataclasses derive __hash__ from their
     fields. If any field contains an unhashable element (e.g., list inside a
     tuple), hashing the instance fails.
+    
+    Rules:
+    - dict-like -> tuple of (key, value) pairs sorted by key
+    - list/tuple -> tuple of frozen elements
+    - set -> frozenset of frozen elements
+    - everything else -> unchanged
+    
+    Parameters
+    ----------
+    value : Any
+        The value to freeze.
+    
+    Returns
+    -------
+    Hashable
+        A hashable equivalent of the input value following the rules above.
     """
+    
     # Handle mappings (dict-like)
     if isinstance(value, Mapping):
         # Freeze keys+values and sort for determinism
         return tuple(
-            sorted((k, _freeze(v, map_sort_key)) for k, v in value.items())
+            sorted((k, _freeze(v)) for k, v in value.items())
         )
     
     # Handle sequences
     if isinstance(value, (list, tuple)):
-        return tuple(_freeze(v, map_sort_key) for v in value)
+        return tuple(_freeze(v) for v in value)
     
     # Handle sets
     if isinstance(value, set):
-        return frozenset(_freeze(v, map_sort_key) for v in value)
+        return frozenset(_freeze(v) for v in value)
     
     # Leave everything else as-is (strings, ints, regex patterns,
     # pd.Timestamp, etc.)
@@ -114,14 +143,12 @@ def _unfreeze(value: Any) -> Any:
         if value and all(
             isinstance(item, tuple) and len(item) == 2 for item in value
         ):
-            return { k: _unfreeze(v) for k, v in value }
-        
-        # Frozen sequence
-        return [ _unfreeze(v) for v in value ]
+            return {k: _unfreeze(v) for k, v in value}
+        return [_unfreeze(v) for v in value]
     
     # Frozen set
     if isinstance(value, frozenset):
-        return { _unfreeze(v) for v in value }
+        return {_unfreeze(v) for v in value}
     
     return value
 
@@ -129,19 +156,17 @@ def _unfreeze(value: Any) -> Any:
 @dataclass(frozen=True, slots=True)
 class CallSpec:
     """
-    A hashable "method call" specification.
-    
-    This replaces the previous dict-of-dict shape used by ColumnConfig for
-    normalization / reviews.
+    A hashable "method call" including the name of the method and its
+    parametrization.
     
     Parameters
     ----------
-    method : TDNormalizationMethod | TDReviewMethod
+    method : "text", "numeric", "date", str
         The name of the method to call.
     
-    params : tuple[tuple[str, Any], ...], default=()
+    params : tuple[tuple[str, Any], ...]
         The parameters to pass to the method, stored as an ordered tuple of
-        (key, value) pairs.
+        (key, value) pairs. An empty tuple indicates no parameters.
     
     Notes
     -----
@@ -159,29 +184,29 @@ class CallSpec:
     def from_map(
         cls,
         method_name: TDNormalizationMethod | TDReviewMethod,
-        params: Mapping[str, Any] | None,
+        parameters: Mapping[str, Any] | None,
         *,
         sort_key: Callable[[tuple[str, Any]], Any] | None = None
     ) -> "CallSpec":
         sort_key = sort_key or (lambda kv: kv[0]) 
-        if params is None:
+        if parameters is None:
             logger.debug(
                 f"CallSpec parameters for method '{method_name}' is None. "
                 "Using empty parameters."
             )
             return cls(method_name=method_name, params=tuple())
         
-        if not isinstance(params, Mapping):
+        if not isinstance(parameters, Mapping):
             logger.debug(
                 "CallSpec parameters must be a mapping (dict-like). "
-                f"Got {type(params).__name__}."
+                f"Got {type(parameters).__name__}."
             )
             return cls(method_name=method_name, params=tuple())
         
         keys_and_values: list[tuple[str, Any]] = []
-        for k, v in params.items():
+        for k, v in parameters.items():
             v = _cast_string(v)
-            v = _freeze(v, sort_key)
+            v = _freeze(v)
             keys_and_values.append((k, v))
         
         return cls(
@@ -199,6 +224,10 @@ class CallSpec:
             return f"{self.method_name}"
         hashed_params = " - ".join(str(item) for item in self.params)
         return f"{self.method_name}: {hashed_params}"
+    
+    def has_parameters(self) -> bool:
+        """Check if this CallSpec has any parameters."""
+        return (isinstance(self.params, tuple) and len(self.params) > 0)
 
 
 @dataclass
@@ -220,7 +249,7 @@ class ColumnConfig:
     aliases : Sequence[str], str, default None
         Alternative names for the column.
     
-    na_values : AllowedNA, Sequence[AllowedNA], default None
+    na_values : Sequence[AllowedNA], default None
         Additional values to consider as NA/missing.
     
     fill_na : AllowedNA, default None
@@ -261,21 +290,26 @@ class ColumnConfig:
             )
             aliases = set()
         
-        self.aliases: set = aliases
+        self.aliases: set[str] = aliases
         self.aliases.add(self.name)
         
         # 2) Cast every na value to its correct dtype
-        na_values: Optional[tuple[StrCastedDTypes]] = None
+        na_values: Optional[tuple[StrCastedDTypes | str]] = None
+        self.na_values = (
+            [self.na_values]
+            if isinstance(self.na_values, str)
+            else self.na_values
+        )
         if isinstance(self.na_values, Sequence):
             na_values = tuple(_cast_string(nas) for nas in self.na_values)
         elif self.na_values is not None:
             na_values = (_cast_string(self.na_values), )
         
-        self.na_values: Optional[tuple[StrCastedDTypes]] = na_values
+        self.na_values: Optional[tuple[StrCastedDTypes | str]] = na_values
         
         # 3) Cast fill_na to its correct dtype
         if self.fill_na is not None:
-            self.fill_na: StrCastedDTypes = _cast_string(self.fill_na)
+            self.fill_na: StrCastedDTypes | str = _cast_string(self.fill_na)
         
         # 4) Normalize legacy review/normalization shapes into CallSpec
         self.reviews = self._parse_pipeline(self.reviews)
@@ -355,9 +389,9 @@ class ColumnConfig:
     
     @staticmethod
     def _pipeline_to_yaml(pipeline: Optional[tuple[CallSpec, ...]]) -> Any:
-        """Convert a CallSpec pipeline into a YAML-friendly shape.
-        
-        Output mirrors the legacy config format:
+        """
+        Convert a CallSpec pipeline into a YAML-friendly shape. Output mirrors
+        the legacy config format:
         - None
         - "method" (single method, no params)
         - {"method": {param: value, ...}, ...}
