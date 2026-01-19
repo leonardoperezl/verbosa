@@ -5,11 +5,7 @@ import logging
 import re
 
 # Third-party imports
-from pandas.api.types import (
-    is_numeric_dtype,
-    is_datetime64_any_dtype,
-    is_object_dtype
-)
+from pandas.api.types import is_datetime64_any_dtype
 import pandas as pd
 
 # Library imports
