@@ -13,7 +13,7 @@ from verbosa.utils.validation_helpers import is_file_path
 
 if TYPE_CHECKING:
     import boto3
-    from verbosa.interfaces.aws import AWSCredentials, AthenaTableDetails
+    from verbosa.interfaces.aws import AWSCredentials, AthenaDataBaseDetails
 
 
 logger = logging.getLogger(__name__)
@@ -29,10 +29,10 @@ class AthenaDataReader:
     def __init__(
         self,
         boto3_session: boto3.Session,
-        table_details: Optional[AthenaTableDetails] = None,
+        db_details: AthenaDataBaseDetails,
     ) -> None:
         self.session: boto3.Session = boto3_session
-        self.table_details: AthenaTableDetails = table_details
+        self.db_details: AthenaDataBaseDetails = db_details
     
     def execute_query(self, query: str) -> pd.DataFrame:
         if is_file_path(query): query = _read_query_file(query)
@@ -40,10 +40,10 @@ class AthenaDataReader:
         try:
             df: pd.DataFrame = wr.athena.read_sql_query(
                 sql=query,
-                database=self.table_details.database,
-                ctas_approach=self.table_details.ctas_approach,
-                workgroup=self.table_details.workgroup,
-                s3_output=self.table_details.s3_output_location,
+                database=self.db_details.database,
+                ctas_approach=self.db_details.ctas_approach,
+                workgroup=self.db_details.workgroup,
+                s3_output=self.db_details.s3_output_location,
                 boto3_session=self.session
             )
         except Exception as e:
@@ -57,6 +57,7 @@ class AthenaDataReader:
     
     def simple_query(
         self,
+        table_name: str,
         columns: Sequence[str] | str,
         *,
         filter_by: Optional[str] = None,
@@ -67,7 +68,7 @@ class AthenaDataReader:
         
         query: str = f"""
         SELECT {", ".join(columns)}
-        FROM {self.table_details.database}.{self.table_details.table_name}
+        FROM {self.db_details.database}.{table_name}
         """
         
         if (filter_by is not None) and (value is not None):
@@ -77,10 +78,10 @@ class AthenaDataReader:
         
         return self.execute_query(query=query)
     
-    def get_unique_values(self, column: str) -> list[Any]:
+    def get_unique_values(self, table_name:str, column: str) -> list[Any]:
         query: str = f"""
         SELECT DISTINCT({column})
-        FROM {self.table_details.database}.{self.table_details.table_name};
+        FROM {self.db_details.database}.{table_name};
         """
         
         df: pd.DataFrame = self.execute_query(query=query)

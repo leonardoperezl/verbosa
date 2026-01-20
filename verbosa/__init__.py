@@ -19,7 +19,7 @@ from verbosa.data.readers.aws import AWSDataReader, AthenaDataReader
 # Configuration interfaces
 from verbosa.interfaces.column_config import ColumnConfig, CallSpec
 from verbosa.interfaces.columns_config import ColumnsConfig
-from verbosa.interfaces.aws import AWSCredentials, AthenaTableDetails
+from verbosa.interfaces.aws import AWSCredentials, AthenaDataBaseDetails
 
 # Core interfaces
 # from verbosa.interfaces.normalizer import NormalizerInterface
@@ -52,7 +52,7 @@ __all__ = [
     "CallSpec",
     "ColumnsConfig",
     "AWSCredentials",
-    "AthenaTableDetails",
+    "AthenaDataBaseDetails",
     
     # Utilities
     "LogsMachine",

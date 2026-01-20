@@ -3,6 +3,7 @@ import pandas as pd
 
 from tests.fixtures.dataframes_test import custom, client
 from verbosa.data.normalizers.tabular_data import TabularDataNormalizer
+from verbosa.data.readers.local import FileDataReader
 
 
 # ------------------------ Text normalization tests ------------------------ #
@@ -137,3 +138,9 @@ def test_categorical_convert_na(client: pd.DataFrame) -> None:
     
     print()
     print(normalizer.data.loc[normalizer.data["clasificacion"].isna(), :])
+
+
+def test_autonorm(client: pd.DataFrame) -> None:
+    config_path = "./verbosa/assets/examples/configs/column_norm_config.yaml"
+    normalizer = TabularDataNormalizer(client, config_path=config_path)
+    normalizer.autonorm()

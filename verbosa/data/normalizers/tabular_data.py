@@ -75,7 +75,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         The DataFrame to be normalized
     columns_config_path : Pathlike, optional
         Path to the YAML configuration file containing normalization rules
-        
+    
     Attributes
     ----------
     data : pd.DataFrame
@@ -104,9 +104,10 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     def __init__(
         self,
         data: pd.DataFrame,
-        columns_config_path: Optional[Pathlike] = None
+        *,
+        config_path: Optional[Pathlike] = None
     ) -> None:
-        super().__init__(data, columns_config_path)
+        super().__init__(data, config_path)
         if self.autonorm_settings is not None:
             self.columns_config: ColumnsConfig = (
                 ColumnsConfig.from_yaml(self.autonorm_settings)
@@ -186,7 +187,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         logger.info("Beginning conversion of defined NA values to pd.NA.")
         
         na_values_dict = self.columns_config.get_na_values_dict()
-        self.convert_to_na(column_na_values=na_values_dict)
+        self.convert_to_na(columns_and_nas=na_values_dict)
         
         logger.info("Ended conversion of defined NA values to pd.NA.")
     
@@ -221,10 +222,8 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     def _fill_na_values(self) -> None:
         logger.info("Filling defined NA values in columns.")
         
-        fill_values_dict = (
-            self.columns_config.get_columns_fill_na_dict()
-        )
-        self.fill_na(column_fill_values=fill_values_dict)
+        fill_values_dict = self.columns_config.get_columns_fill_na_dict()
+        self.fill_na(columns_and_fills=fill_values_dict)
         
         logger.info("Completed filling defined NA values in columns.")
     
@@ -262,8 +261,8 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             s = self.data[column]
             
             if error == "coerce":
-                not_str_mask = s.str.upper().isna() & s.notna()
-                s = s.mask(not_str_mask, pd.NA).astype("string")
+                str_mask = s.apply(lambda x: isinstance(x, str))
+                s = s.mask(~str_mask, pd.NA).astype("string")
             else:
                 s = s.astype("string", errors=error)
             
@@ -731,6 +730,9 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
                     f"normalized dtype, please use a normalization method "
                     f"and try again. Skipping NA filling."
                 )
+                continue
+            
+            if fill_value is None:
                 continue
             
             # 2) Apply filling based on dtype, if not supported, use pandas

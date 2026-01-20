@@ -44,9 +44,8 @@ class AWSCredentials:
 
 
 @dataclass(frozen=True)
-class AthenaTableDetails:
+class AthenaDataBaseDetails:
     database: str
-    table_name: str
     workgroup: Optional[str] = "primary"
     s3_output_location: Optional[str] = None
     ctas_approach: bool = True
