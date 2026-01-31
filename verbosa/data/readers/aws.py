@@ -1,4 +1,5 @@
 from __future__ import annotations
+from string import Template
 from typing import TYPE_CHECKING, Any, Optional, Sequence
 import logging
 
@@ -7,7 +8,7 @@ import awswrangler as wr
 import pandas as pd
 
 
-from verbosa.utils.typings import TDViewer
+from verbosa.utils.typings import Pathlike
 from verbosa.utils.validation_helpers import is_file_path
 
 
@@ -34,7 +35,39 @@ class AthenaDataReader:
         self.session: boto3.Session = boto3_session
         self.db_details: AthenaDataBaseDetails = db_details
     
-    def execute_query(self, query: str) -> pd.DataFrame:
+    def execute_query(
+        self, query: Pathlike | str, kwargs: str
+    ) -> Optional[pd.DataFrame]:
+        """
+        Run the provided query at the Athena query system. All queries made
+        should belong to a single database.
+        
+        Parameters
+        ----------
+        query : Pathlike or str
+            Query to run as if ran at the Athena console. If the value is a 
+            valid path to a file, it will read and execute its content.
+        
+        kwargs: str
+            Key value pairs that specify a placeholder and its value at the
+            query.
+        
+        Returns
+        -------
+        pd.DataFrame
+            The result of the query made. If a an empty DataFrame was returned
+            it means that the query resulted in no rows returned.
+        
+        None
+            When the query failed because the query had invalid actions /
+            values.
+        
+        Examples
+        --------
+        >>> reader = AthenaDataReader(boto3_session, db_details)
+        code_output
+        """
+        
         if is_file_path(query): query = _read_query_file(query)
         
         try:

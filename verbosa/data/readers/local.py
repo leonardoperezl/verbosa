@@ -1,4 +1,5 @@
 from __future__ import annotations
+from string import Template
 from typing import TYPE_CHECKING, Any
 import json
 import logging
@@ -127,13 +128,19 @@ class FileSystemNavigator:
 
 
 class FileDataReader(FileSystemNavigator):
+    
+    # ------------------------ Formatted data storage ------------------------
     @classmethod
-    def read_json(cls, file_path: Pathlike) -> Any:
+    def read_csv(cls, file_path: Pathlike) -> pd.DataFrame:
+        pass
+    
+    @classmethod
+    def read_json(cls, file_path: Pathlike) -> dict[str, Any] | list[Any]:
         with open(file_path, mode="r", encoding="utf-8") as f:
             return json.load(f)
     
     @classmethod
-    def read_yaml(cls, file_path: Pathlike) -> Any:
+    def read_yaml(cls, file_path: Pathlike) -> dict[str, Any] | list[Any]:
         file_path = Path(file_path)
         
         if not file_path.exists():
@@ -142,15 +149,18 @@ class FileDataReader(FileSystemNavigator):
         with open(file_path, mode="r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     
-    @classmethod
-    def read_csv(cls, file_path: Pathlike) -> pd.DataFrame:
-        pass
-    
+    # --------------------------- Simple text data ---------------------------
     @classmethod
     def read_txt(cls, file_path: Pathlike) -> str:
         with open(file_path, mode="r", encoding="utf-8") as f:
             return f.read()
     
+    @classmethod
+    def read_sql(cls, file_path: Pathlike) -> Template:
+        file_txt: str = FileDataReader.read_txt(file_path)
+        return Template(file_txt)
+    
+    # ------------------------ Non-binary data storage -----------------------
     @classmethod
     def read_excel(cls, file_path: Pathlike) -> pd.DataFrame:
         pass
