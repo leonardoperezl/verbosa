@@ -1,5 +1,6 @@
 # Python standard library imports
 from __future__ import annotations
+from pathlib import Path
 from typing import Any, Callable, Literal, Optional, Sequence, TypeAlias
 import logging
 import re
@@ -105,15 +106,13 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         self,
         data: pd.DataFrame,
         *,
-        config_path: Optional[Pathlike] = None
+        config_path: Optional[Pathlike | ColumnsConfig] = None
     ) -> None:
         super().__init__(data, config_path)
-        if self.autonorm_settings is not None:
-            self.columns_config: ColumnsConfig = (
+        if isinstance(config_path, (str, Path)):
+            self.autonorm_settings: ColumnsConfig = (
                 ColumnsConfig.from_yaml(self.autonorm_settings)
             )
-        else:
-            self.columns_config = None
     
     # ------------------------- Non-public methods ------------------------- #
     def _autonorm_implementation(self) -> pd.DataFrame:
@@ -141,7 +140,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         - If a column has no normalization defined, it will be skipped
         - Invalid normalization methods will raise an AttributeError
         """
-        if self.columns_config is None:
+        if self.autonorm_settings is None:
             raise ValueError(
                 "No columns configuration available. Cannot perform automatic "
                 "normalization without configuration."
@@ -149,7 +148,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         
         logger.info(
             f"Beginning automatic normalization using configuration: "
-            f"{self.columns_config.name}"
+            f"{self.autonorm_settings.name}"
         )
         
         # 1) Sort the columns according to the order in the configuration
@@ -174,9 +173,12 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
         
         not_in_config = [
             col for col in self.data.columns
-            if col not in self.columns_config
+            if col not in self.autonorm_settings
         ]
-        new_order = list(self.columns_config) + list(not_in_config)
+        new_order = list(self.autonorm_settings) + list(not_in_config)
+        
+        # Sort columns into the provided config order. This action will also
+        # rename each column name to each ColumnConfig.name attribute.
         self.data = self.data.loc[:, new_order]
         
         logger.info(
@@ -186,7 +188,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     def _convert_na_values(self) -> None:
         logger.info("Beginning conversion of defined NA values to pd.NA.")
         
-        na_values_dict = self.columns_config.get_na_values_dict()
+        na_values_dict = self.autonorm_settings.get_na_values_dict()
         self.convert_to_na(columns_and_nas=na_values_dict)
         
         logger.info("Ended conversion of defined NA values to pd.NA.")
@@ -196,7 +198,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             "Beginning application of normalization methods to column groups."
         )
         
-        norm_groups = self.columns_config.group_by_normalization()
+        norm_groups = self.autonorm_settings.group_by_normalization()
         for spec, columns in norm_groups:
             method_name = spec.method_name
             if not hasattr(self, method_name):
@@ -222,7 +224,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
     def _fill_na_values(self) -> None:
         logger.info("Filling defined NA values in columns.")
         
-        fill_values_dict = self.columns_config.get_columns_fill_na_dict()
+        fill_values_dict = self.autonorm_settings.get_columns_fill_na_dict()
         self.fill_na(columns_and_fills=fill_values_dict)
         
         logger.info("Completed filling defined NA values in columns.")

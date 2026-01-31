@@ -38,6 +38,7 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
     columns : Sequence[ColumnConfig]
         List of column configurations
     """
+    
     def __init__(
         self,
         name: str,
@@ -85,10 +86,6 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         KeyError
             If no column with the given name/alias exists.
         """
-        if not isinstance(key, str):
-            raise TypeError(
-                f"Column key must be str, not {type(key).__name__}"
-            )
         
         try:
             return self._index[key]
@@ -107,11 +104,11 @@ class ColumnsConfig(Mapping[str, ColumnConfig]):
         """
         return len(self._columns)
     
-    def __contains__(self, key: object) -> bool:
+    def __contains__(self, key: str) -> bool:
         """
         Membership by name or alias, case-insensitive.
         """
-        if not isinstance(key, str): return False
+        
         return key in self._index
     
     def __repr__(self) -> str:
