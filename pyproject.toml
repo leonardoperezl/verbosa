@@ -1,6 +1,6 @@
 [project]
 name = "verbosa"
-version = "0.1.2"
+version = "0.1.3"
 description = """
 A small library that streamlines everyday data handling tasks like validating
 data types, enforcing integrity rules, and applying common data checks. It

@@ -177,3 +177,7 @@ Thumbs.db
 
 # Log files
 *.log
+
+# Credentials, secrets, unshareable values
+secrets/
+credentials/
