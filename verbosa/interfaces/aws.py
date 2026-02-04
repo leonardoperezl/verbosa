@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import ClassVar, Dict, Optional, Tuple
+from typing import ClassVar, Dict, Mapping, Optional, Sequence, Tuple
 
 import boto3
 
@@ -43,9 +43,12 @@ class AWSCredentials:
         )
 
 
-@dataclass(frozen=True)
+@dataclass
 class AthenaDataBaseDetails:
     database: str
     workgroup: Optional[str] = "primary"
     s3_output_location: Optional[str] = None
-    ctas_approach: bool = True
+    ctas_approach: bool = False
+    ctas_parameters: Optional[Mapping[str, str | Sequence[str]]] = None
+    unload_approach: bool = False
+    unload_parameters: Optional[Mapping[str, str | Sequence[str]]] = None

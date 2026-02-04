@@ -1,6 +1,6 @@
 from __future__ import annotations
 from string import Template
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence
 import logging
 
 
@@ -10,20 +10,16 @@ import pandas as pd
 
 from verbosa.utils.typings import Pathlike
 from verbosa.utils.validation_helpers import is_file_path
+from verbosa.data.readers.local import FileDataReader
 
 
 if TYPE_CHECKING:
+    from string import Template
     import boto3
     from verbosa.interfaces.aws import AWSCredentials, AthenaDataBaseDetails
 
 
 logger = logging.getLogger(__name__)
-
-
-def _read_query_file(file_path: str) -> str:
-    with open(file_path, "r", encoding="utf-8") as file:
-        sql = file.read()
-    return sql
 
 
 class AthenaDataReader:
@@ -35,8 +31,21 @@ class AthenaDataReader:
         self.session: boto3.Session = boto3_session
         self.db_details: AthenaDataBaseDetails = db_details
     
+    def optimize_for(
+        self, *, output_size: Literal["small", "large"]
+    ) -> None:
+        if output_size == "small":
+            self.db_details.ctas_approach = False
+            self.db_details.unload_approach = False
+        
+        elif output_size == "large":
+            self.db_details.ctas_approach = True
+            self.db_details.unload_approach = False
+        
+        return None
+    
     def execute_query(
-        self, query: Pathlike | str, kwargs: str
+        self, query: Pathlike | str, **kwargs: str
     ) -> Optional[pd.DataFrame]:
         """
         Run the provided query at the Athena query system. All queries made
@@ -50,7 +59,7 @@ class AthenaDataReader:
         
         kwargs: str
             Key value pairs that specify a placeholder and its value at the
-            query.
+            query's placeholders (if applies).
         
         Returns
         -------
@@ -68,7 +77,13 @@ class AthenaDataReader:
         code_output
         """
         
-        if is_file_path(query): query = _read_query_file(query)
+        if is_file_path(query):
+            query: Template = FileDataReader.read_sql(query)
+            
+            if kwargs is not None:
+                query = query.substitute(**kwargs)
+            else:
+                query = query.template
         
         try:
             df: pd.DataFrame = wr.athena.read_sql_query(
@@ -82,9 +97,12 @@ class AthenaDataReader:
         except Exception as e:
             logger.exception(
                 f"The query provided: {query} could not be executed as an "
-                f"Athena query. Returning an empty DataFrame"
+                f"Athena query. Returning None."
             )
-            return pd.DataFrame()
+            return None
+        
+        if df.empty:
+            logger.debug(f"The provided query got 0 rows retrieved.")
         
         return df
     
