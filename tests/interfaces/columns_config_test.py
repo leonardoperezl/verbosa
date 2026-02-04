@@ -1,6 +1,6 @@
 import pytest
 
-from verbosa.utils.config import CONFIG_EXAMPLES_DIRECTORY
+from tests.utils.config import CONFIG_EXAMPLES_DIRECTORY
 from verbosa.interfaces.columns_config import ColumnsConfig
 from verbosa.interfaces.column_config import CallSpec
 

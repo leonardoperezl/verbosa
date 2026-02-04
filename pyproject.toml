@@ -39,11 +39,6 @@ tests = [
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
 
-[tool.poetry]
-include = [
-    { path = "verbosa/assets/**", format = ["sdist", "wheel"] },
-]
-
 
 # Build system configuration
 [build-system]

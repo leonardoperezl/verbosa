@@ -2,7 +2,7 @@ from pandas import read_csv, DataFrame
 import pytest
 
 
-from verbosa.utils.config import EXAMPLES_DIRECTORY
+from tests.utils.config import EXAMPLES_DIRECTORY
 
 
 EXAMPLES_DATA_DIRECTORY = EXAMPLES_DIRECTORY / "data"
