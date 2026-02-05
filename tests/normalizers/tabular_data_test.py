@@ -141,6 +141,6 @@ def test_categorical_convert_na(client: pd.DataFrame) -> None:
 
 
 def test_autonorm(client: pd.DataFrame) -> None:
-    config_path = "./verbosa/assets/examples/configs/column_norm_config.yaml"
+    config_path = "./tests/assets/examples/configs/column_norm_config.yaml"
     normalizer = TabularDataNormalizer(client, config_path=config_path)
     normalizer.autonorm()

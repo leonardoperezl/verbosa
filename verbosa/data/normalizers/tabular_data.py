@@ -640,7 +640,7 @@ class TabularDataNormalizer(NormalizerInterface[pd.DataFrame]):
             
             # 3) Convert to boolean dtype with coercion
             pre_na_count = int(s.isna().sum())
-            s = s.astype("boolean", errors="coerce")
+            s = s.astype("boolean")
             na_count = int(s.isna().sum())
             
             if na_count > pre_na_count:
